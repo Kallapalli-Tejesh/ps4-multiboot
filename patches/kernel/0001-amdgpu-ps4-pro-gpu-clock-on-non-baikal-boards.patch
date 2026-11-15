@@ -1,0 +1,91 @@
+From: Chokri Hammedi <52697989+blue0x1@users.noreply.github.com>
+Subject: [PATCH] amdgpu: opt-in PS4 Pro GPU clock setup on non-Baikal boards
+
+On Gladius boards with an Aeolia or Belize southbridge the clock setup is
+skipped and the GPU keeps its boot clock (about 391 MHz measured). Add
+amdgpu.ps4_gpu_clk: 1 logs the clock, PLL and voltage registers, 2 also
+programs the 911 MHz SPLL. Both go through the SAMU proxy only. Default 0
+keeps the current behavior.
+---
+diff --git a/drivers/gpu/drm/amd/amdgpu/liverpool_clk.c b/drivers/gpu/drm/amd/amdgpu/liverpool_clk.c
+index 1113a77..87914db 100644
+--- a/drivers/gpu/drm/amd/amdgpu/liverpool_clk.c
++++ b/drivers/gpu/drm/amd/amdgpu/liverpool_clk.c
+@@ -2,6 +2,7 @@
+ 
+ #include <asm/ps4.h>
+ #include <linux/delay.h>
++#include <linux/moduleparam.h>
+ #include "amdgpu.h"
+ #include "liverpool_clk.h"
+ #include "liverpool_smu.h"
+@@ -320,6 +321,49 @@ static int liverpool_sclk_set_top(struct amdgpu_device *adev)
+ 	return ((cntl & SCLK_DIVIDER_MASK) == target && current_vid == vid) ? 0 : -EIO;
+ }
+ 
++/*
++ * The clock setup below runs on Baikal boards only. On Gladius (PS4 Pro) boards
++ * with an Aeolia or Belize southbridge the GPU keeps its boot clock, measured
++ * at about 391 MHz of the rated 911 MHz. Opt in from the kernel command line:
++ *   amdgpu.ps4_gpu_clk=1  log the clock, PLL and voltage registers (reads only)
++ *   amdgpu.ps4_gpu_clk=2  also program the SPLL for 911 MHz, then log again
++ * Both read and write only through the SAMU proxy, like Sony's own kernel.
++ */
++static int ps4_gpu_clk;
++module_param_named(ps4_gpu_clk, ps4_gpu_clk, int, 0444);
++MODULE_PARM_DESC(ps4_gpu_clk,
++		 "PS4 Pro GPU clock on non-Baikal boards: 0 off, 1 log registers, 2 set 911 MHz SPLL");
++
++static void gladius_clk_report(struct amdgpu_device *adev, const char *when)
++{
++	static const struct {
++		u32 reg;
++		const char *name;
++	} regs[] = {
++		{ GCK_SCLK_FUSES, "SCLK_FUSES" },
++		{ GCK_SPLL_FUSES, "SPLL_FUSES" },
++		{ CG_SCLK_CNTL_80, "SCLK_CNTL_80" },
++		{ CG_SCLK_STATUS_84, "SCLK_STATUS_84" },
++		{ CG_SCLK_CNTL, "SCLK_CNTL" },
++		{ CG_SCLK_STATUS, "SCLK_STATUS" },
++		{ CG_SPLL_FUNC_CNTL, "SPLL_FUNC_CNTL" },
++		{ CG_SPLL_FUNC_CNTL_3, "SPLL_FUNC_CNTL_3" },
++		{ CG_SPLL_STATUS, "SPLL_STATUS" },
++		{ 0xc05002e4, "SPLL_FB_2E4" },
++		{ 0xc05002e0, "SPLL_STAT_2E0" },
++		{ VDDNB_STATUS, "VDDNB_STATUS" },
++	};
++	u32 i, val;
++	int r;
++
++	for (i = 0; i < ARRAY_SIZE(regs); i++) {
++		val = 0;
++		r = liverpool_smu_samu_read(adev, regs[i].reg, &val);
++		dev_info(adev->dev, "PS4 GPU clock %s: %s 0x%08x = 0x%08x (r=%d)\n",
++			 when, regs[i].name, regs[i].reg, val, r);
++	}
++}
++
+ int liverpool_clk_force_max(struct amdgpu_device *adev)
+ {
+ 	u32 spll_fuses, sclk_fuses, spll_cntl, spll_fb;
+@@ -328,8 +372,18 @@ int liverpool_clk_force_max(struct amdgpu_device *adev)
+ 	u32 spll_pdiva, spll_fbdiv;
+ 	u32 status;
+ 
+-	if (!ps4_is_baikal())
++	if (!ps4_is_baikal()) {
++		if (adev->asic_type != CHIP_GLADIUS || ps4_gpu_clk <= 0)
++			return 0;
++		gladius_clk_report(adev, "before");
++		if (ps4_gpu_clk < 2)
++			return 0;
++		dev_warn(adev->dev,
++			 "PS4 GPU clock: programming the 911 MHz SPLL on a non-Baikal board (amdgpu.ps4_gpu_clk=2)\n");
++		gladius_spll_911(adev);
++		gladius_clk_report(adev, "after");
+ 		return 0;
++	}
+ 
+ 	if (adev->asic_type != CHIP_GLADIUS)
+ 		return liverpool_sclk_set_top(adev);

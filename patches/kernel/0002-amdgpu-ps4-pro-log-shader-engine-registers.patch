@@ -1,0 +1,63 @@
+diff --git a/drivers/gpu/drm/amd/amdgpu/gfx_v7_0.c b/drivers/gpu/drm/amd/amdgpu/gfx_v7_0.c
+index 7d8bc1e80..b0ff28157 100644
+--- a/drivers/gpu/drm/amd/amdgpu/gfx_v7_0.c
++++ b/drivers/gpu/drm/amd/amdgpu/gfx_v7_0.c
+@@ -3109,6 +3109,49 @@ static void gfx_v7_0_liverpool_constants_init(struct amdgpu_device *adev)
+  * init the gfx constants such as the 3D engine, tiling configuration
+  * registers, maximum number of quad pipes, render backends...
+  */
++static int gladius_se_report;
++module_param(gladius_se_report, int, 0444);
++MODULE_PARM_DESC(gladius_se_report, "PS4 Pro: log per shader engine registers at init (read only)");
++
++/*
++ * Debug: compute and graphics waves only ever run on shader engines 0 and 1
++ * of the PS4 Pro. Log what each shader engine reports, to find what keeps
++ * engines 2 and 3 out. Reads only.
++ */
++static void gladius_se_report_regs(struct amdgpu_device *adev)
++{
++	static const u32 regs[] = {
++		mmGRBM_CNTL, 0x2003 /* GRBM_PWR_CNTL */, mmGRBM_STATUS,
++		mmGRBM_STATUS_SE0, mmGRBM_STATUS_SE1, mmGRBM_STATUS_SE2,
++		mmGRBM_STATUS_SE3, 0x203e, mmRLC_PG_CNTL,
++		mmRLC_PG_ALWAYS_ON_CU_MASK, mmRLC_MAX_PG_CU,
++		mmSPI_PG_ENABLE_STATIC_CU_MASK, 0xf003 /* CGTS_TCC_DISABLE */,
++		0xf004 /* CGTS_USER_TCC_DISABLE */, mmGB_ADDR_CONFIG,
++	};
++	u32 i, se;
++
++	for (i = 0; i < ARRAY_SIZE(regs); i++)
++		dev_info(adev->dev, "Gladius reg 0x%04x = 0x%08x\n",
++			 regs[i], RREG32(regs[i]));
++
++	mutex_lock(&adev->grbm_idx_mutex);
++	for (se = 0; se < 4; se++) {
++		gfx_v7_0_select_se_sh(adev, se, 0, 0xffffffff, 0);
++		dev_info(adev->dev,
++			 "Gladius SE%u: GFX_INDEX 0x%08x CC_SA 0x%08x USER_SA 0x%08x CC_RB 0x%08x USER_RB 0x%08x SPI_PG 0x%08x RASTER 0x%08x 0x%08x\n",
++			 se, RREG32(mmGRBM_GFX_INDEX),
++			 RREG32(mmCC_GC_SHADER_ARRAY_CONFIG),
++			 RREG32(mmGC_USER_SHADER_ARRAY_CONFIG),
++			 RREG32(mmCC_RB_BACKEND_DISABLE),
++			 RREG32(mmGC_USER_RB_BACKEND_DISABLE),
++			 RREG32(mmSPI_PG_ENABLE_STATIC_CU_MASK),
++			 RREG32(mmPA_SC_RASTER_CONFIG),
++			 RREG32(mmPA_SC_RASTER_CONFIG_1));
++	}
++	gfx_v7_0_select_se_sh(adev, 0xffffffff, 0xffffffff, 0xffffffff, 0);
++	mutex_unlock(&adev->grbm_idx_mutex);
++}
++
+ static void gfx_v7_0_constants_init(struct amdgpu_device *adev)
+ {
+ 	u32 sh_mem_cfg, sh_static_mem_cfg, sh_mem_base;
+@@ -3131,6 +3174,8 @@ static void gfx_v7_0_constants_init(struct amdgpu_device *adev)
+ 
+ 	gfx_v7_0_setup_rb(adev);
+ 	gfx_v7_0_get_cu_info(adev);
++	if (adev->asic_type == CHIP_GLADIUS && gladius_se_report)
++		gladius_se_report_regs(adev);
+ 	gfx_v7_0_config_init(adev);
+ 
+ 	/* set HW defaults for 3D engine */

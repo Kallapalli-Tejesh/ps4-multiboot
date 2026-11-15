@@ -24,6 +24,12 @@ fi
 for f in config build.sh Dockerfile; do
     [ -f "$SRC/$f" ] || die "PS4 kernel tree has no '$f' file; upstream layout changed"
 done
+# This project's kernel changes, applied on top of the fetched tree.
+for p in "$ROOT/patches/kernel"/*.patch; do
+    [ -f "$p" ] || continue
+    log "Applying $(basename "$p")"
+    git -C "$SRC" apply "$p" || die "$(basename "$p") does not apply to the kernel tree"
+done
 
 if ! docker image inspect "$KERNEL_BUILDER_IMAGE" >/dev/null 2>&1; then
     log "Building kernel toolchain image $KERNEL_BUILDER_IMAGE"

@@ -1,0 +1,84 @@
+--- a/drivers/gpu/drm/amd/amdgpu/gfx_v7_0.c
++++ b/drivers/gpu/drm/amd/amdgpu/gfx_v7_0.c
+@@ -3152,6 +3152,69 @@
+ 	mutex_unlock(&adev->grbm_idx_mutex);
+ }
+ 
++static int gladius_all_cus;
++module_param(gladius_all_cus, int, 0444);
++MODULE_PARM_DESC(gladius_all_cus, "PS4 Pro: 1 = turn off the per-CU power gating left on by the PS4 system so shader engines 2 and 3 can run work, 2 = also allow CU 0");
++
++static void gladius_pg_log(struct amdgpu_device *adev, const char *when)
++{
++	u32 se;
++
++	dev_info(adev->dev,
++		 "Gladius PG %s: RLC_PG_CNTL 0x%08x AUTO_PG 0x%08x AO_CU 0x%08x MAX_PG_CU 0x%08x\n",
++		 when, RREG32(mmRLC_PG_CNTL), RREG32(mmRLC_AUTO_PG_CTRL),
++		 RREG32(mmRLC_PG_ALWAYS_ON_CU_MASK), RREG32(mmRLC_MAX_PG_CU));
++	mutex_lock(&adev->grbm_idx_mutex);
++	for (se = 0; se < 4; se++) {
++		gfx_v7_0_select_se_sh(adev, se, 0, 0xffffffff, 0);
++		dev_info(adev->dev,
++			 "Gladius PG %s SE%u: SPI_PG 0x%08x CC_RB 0x%08x RASTER 0x%08x 0x%08x\n",
++			 when, se, RREG32(mmSPI_PG_ENABLE_STATIC_CU_MASK),
++			 RREG32(mmCC_RB_BACKEND_DISABLE),
++			 RREG32(mmPA_SC_RASTER_CONFIG),
++			 RREG32(mmPA_SC_RASTER_CONFIG_1));
++	}
++	gfx_v7_0_select_se_sh(adev, 0xffffffff, 0xffffffff, 0xffffffff, 0);
++	mutex_unlock(&adev->grbm_idx_mutex);
++}
++
++/*
++ * The PS4 system leaves RLC static per-CU power gating on, with an
++ * always-on mask that covers only CUs 1-3 and 5-9. Linux never turns it
++ * off (Gladius has no pg_flags), so waves only ever reach those CUs on
++ * shader engines 0 and 1. Turn the gating off and mark every CU usable.
++ */
++static void gladius_enable_all_cus(struct amdgpu_device *adev)
++{
++	u32 spi_mask = gladius_all_cus >= 2 ? 0xffff : 0xfffe;
++	u32 data, se;
++
++	gladius_pg_log(adev, "before");
++
++	data = RREG32(mmRLC_PG_CNTL);
++	data &= ~(RLC_PG_CNTL__STATIC_PER_CU_PG_ENABLE_MASK |
++		  RLC_PG_CNTL__DYN_PER_CU_PG_ENABLE_MASK |
++		  RLC_PG_CNTL__GFX_POWER_GATING_ENABLE_MASK);
++	WREG32(mmRLC_PG_CNTL, data);
++	data = RREG32(mmRLC_AUTO_PG_CTRL);
++	data &= ~RLC_AUTO_PG_CTRL__AUTO_PG_EN_MASK;
++	WREG32(mmRLC_AUTO_PG_CTRL, data);
++	WREG32(mmRLC_PG_ALWAYS_ON_CU_MASK, 0xffffffff);
++
++	mutex_lock(&adev->grbm_idx_mutex);
++	for (se = 0; se < 4; se++) {
++		gfx_v7_0_select_se_sh(adev, se, 0, 0xffffffff, 0);
++		WREG32(mmSPI_PG_ENABLE_STATIC_CU_MASK, spi_mask);
++	}
++	gfx_v7_0_select_se_sh(adev, 0xffffffff, 0xffffffff, 0xffffffff, 0);
++	mutex_unlock(&adev->grbm_idx_mutex);
++
++	/* Raster config writes to engines 2 and 3 did not stick before. */
++	gfx_v7_0_setup_rb(adev);
++
++	gladius_pg_log(adev, "after");
++}
++
+ static void gfx_v7_0_constants_init(struct amdgpu_device *adev)
+ {
+ 	u32 sh_mem_cfg, sh_static_mem_cfg, sh_mem_base;
+@@ -5889,6 +5952,11 @@
+ 	if (r)
+ 		return r;
+ 
++	if (adev->asic_type == CHIP_GLADIUS && gladius_all_cus > 0)
++		gladius_enable_all_cus(adev);
++	else if (adev->asic_type == CHIP_GLADIUS && gladius_se_report)
++		gladius_pg_log(adev, "after rlc");
++
+ 	r = gfx_v7_0_cp_resume(adev);
+ 	if (r)
+ 		return r;
