@@ -1,0 +1,121 @@
+PS4 Pro (Gladius): IA_MULTI_VGT_PARAM in the uconfig register, and the Hawaii
+IA workarounds.
+
+With all 4 shader engines on (kern.neomode_switch=1, GPU reg 0x203e = 0x10),
+every draw with a pixel shader hangs the gfx ring (SPI busy on SE2/SE3, SC busy
+on all) when IA_MULTI_VGT_PARAM is only written to its context register
+0xa2aa. Sony's Neo-mode init writes it with SET_UCONFIG_REG 0x40000258
+(uconfig 0xc258, index 4) instead, and that copy is the one the GPU uses in
+this mode. Writing it there per draw fixes the hang; MMIO reads of it always
+return 0, and a GPU soft reset brings the bad value back.
+
+Both copies are written with the same value, so this is right in 2-engine
+mode too: no need to know which mode the PS4 firmware left the GPU in. The
+uconfig copy is shared by all processes, so it is re-emitted at the start of
+every command buffer (RADV clears its draw state at begin; radeonsi resets
+tracked registers at every IB on GFX7, which has no register shadowing).
+
+Gladius is a 4-SE GFX7 part like Hawaii, so it also gets the Hawaii IA and
+streamout workarounds (WD_SWITCH_ON_EOP for instanced draws, PARTIAL_VS_WAVE
+with SWITCH_ON_EOI, the VGT flush for small instanced draws).
+
+--- a/src/amd/vulkan/radv_cmd_buffer.c
++++ b/src/amd/vulkan/radv_cmd_buffer.c
+@@ -7350,7 +7350,7 @@
+       /* Hawaii hangs if instancing is enabled and WD_SWITCH_ON_EOP is 0.
+        * We don't know that for indirect drawing, so treat it as
+        * always problematic. */
+-      if (gpu_info->family == CHIP_HAWAII && (instanced_draw || indirect_draw))
++      if ((gpu_info->family == CHIP_HAWAII || gpu_info->family == CHIP_GLADIUS) && (instanced_draw || indirect_draw))
+          wd_switch_on_eop = true;
+ 
+       /* Performance recommendation for 4 SE Gfx7-8 parts if
+@@ -7373,7 +7373,7 @@
+ 
+       /* Required by Hawaii and, for some special cases, by GFX8. */
+       if (ia_switch_on_eoi &&
+-          (gpu_info->family == CHIP_HAWAII ||
++          (gpu_info->family == CHIP_HAWAII || gpu_info->family == CHIP_GLADIUS ||
+            (gpu_info->gfx_level == GFX8 &&
+             /* max primgroup in wave is always 2 - leave this for documentation */
+             (radv_cmdbuf_has_stage(cmd_buffer, MESA_SHADER_GEOMETRY) || max_primgroup_in_wave != 2))))
+@@ -7395,7 +7395,7 @@
+        * The hw doc says all multi-SE chips are affected, but amdgpu-pro Vulkan
+        * only applies it to Hawaii. Do what amdgpu-pro Vulkan does.
+        */
+-      if (gpu_info->family == CHIP_HAWAII && ia_switch_on_eoi) {
++      if ((gpu_info->family == CHIP_HAWAII || gpu_info->family == CHIP_GLADIUS) && ia_switch_on_eoi) {
+          bool set_vgt_flush = indirect_draw;
+          if (!set_vgt_flush && instanced_draw) {
+             uint32_t num_prims = radv_prims_for_vertices(&prim_vertex_count, draw_vertex_count);
+@@ -7445,6 +7445,9 @@
+       if (gpu_info->gfx_level == GFX9) {
+          radeon_set_uconfig_reg_idx(&pdev->info, R_030960_IA_MULTI_VGT_PARAM, 4, ia_multi_vgt_param);
+       } else if (gpu_info->gfx_level >= GFX7) {
++         /* PS4 Pro with all 4 shader engines on reads the uconfig copy, as Sony writes it in Neo mode. */
++         if (gpu_info->family == CHIP_GLADIUS)
++            radeon_set_uconfig_reg_idx(&pdev->info, R_030960_IA_MULTI_VGT_PARAM, 4, ia_multi_vgt_param);
+          radeon_set_context_reg_idx(R_028AA8_IA_MULTI_VGT_PARAM, 1, ia_multi_vgt_param);
+       } else {
+          radeon_set_context_reg(R_028AA8_IA_MULTI_VGT_PARAM, ia_multi_vgt_param);
+@@ -14038,7 +14041,8 @@
+     * It must be done after drawing.
+     */
+    if (radv_is_streamout_enabled(cmd_buffer) &&
+-       (gpu_info->family == CHIP_HAWAII || gpu_info->family == CHIP_TONGA || gpu_info->family == CHIP_FIJI)) {
++       (gpu_info->family == CHIP_HAWAII || gpu_info->family == CHIP_GLADIUS || gpu_info->family == CHIP_TONGA ||
++        gpu_info->family == CHIP_FIJI)) {
+       cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_VGT_STREAMOUT_SYNC;
+    }
+ 
+--- a/src/gallium/drivers/radeonsi/si_state_draw.cpp
++++ b/src/gallium/drivers/radeonsi/si_state_draw.cpp
+@@ -857,7 +857,7 @@
+       /* Hawaii hangs if instancing is enabled and WD_SWITCH_ON_EOP is 0.
+        * We don't know that for indirect drawing, so treat it as
+        * always problematic. */
+-      if (sscreen->info.family == CHIP_HAWAII && key->u.uses_instancing)
++      if ((sscreen->info.family == CHIP_HAWAII || sscreen->info.family == CHIP_GLADIUS) && key->u.uses_instancing)
+          wd_switch_on_eop = true;
+ 
+       /* Performance recommendation for 4 SE Gfx7-8 parts if
+@@ -884,7 +884,7 @@
+ 
+       /* Required by Hawaii and, for some special cases, by GFX8. */
+       if (ia_switch_on_eoi &&
+-          (sscreen->info.family == CHIP_HAWAII ||
++          (sscreen->info.family == CHIP_HAWAII || sscreen->info.family == CHIP_GLADIUS ||
+            (sscreen->info.gfx_level == GFX8 && (key->u.uses_gs || max_primgroup_in_wave != 2))))
+          partial_vs_wave = true;
+ 
+@@ -1038,7 +1038,8 @@
+        * only applies it to Hawaii. Do what Vulkan does.
+        */
+       if (GFX_VERSION == GFX7 &&
+-          sctx->family == CHIP_HAWAII && G_028AA8_SWITCH_ON_EOI(ia_multi_vgt_param) &&
++          (sctx->family == CHIP_HAWAII || sctx->family == CHIP_GLADIUS) &&
++          G_028AA8_SWITCH_ON_EOI(ia_multi_vgt_param) &&
+           num_instanced_prims_less_than<IS_DRAW_VERTEX_STATE>(indirect, prim, min_vertex_count,
+                                                               instance_count, 2, sctx->patch_vertices)) {
+          /* The cache flushes should have been emitted already. */
+@@ -1238,6 +1239,11 @@
+                                      AC_TRACKED_IA_MULTI_VGT_PARAM_UCONFIG,
+                                      4, ia_multi_vgt_param);
+    } else if (GFX_VERSION >= GFX7) {
++      /* PS4 Pro with all 4 shader engines on reads the uconfig copy, as Sony writes it in Neo mode. */
++      if (sctx->family == CHIP_GLADIUS)
++         radeon_opt_set_uconfig_reg_idx(R_030960_IA_MULTI_VGT_PARAM,
++                                        AC_TRACKED_IA_MULTI_VGT_PARAM_UCONFIG,
++                                        4, ia_multi_vgt_param);
+       radeon_opt_set_context_reg_idx(R_028AA8_IA_MULTI_VGT_PARAM,
+                                      AC_TRACKED_IA_MULTI_VGT_PARAM, 1, ia_multi_vgt_param);
+    } else {
+@@ -2600,7 +2606,7 @@
+ 
+    /* Workaround for a VGT hang when streamout is enabled.
+     * It must be done after drawing. */
+-   if (((GFX_VERSION == GFX7 && sctx->family == CHIP_HAWAII) ||
++   if (((GFX_VERSION == GFX7 && (sctx->family == CHIP_HAWAII || sctx->family == CHIP_GLADIUS)) ||
+         (GFX_VERSION == GFX8 && (sctx->family == CHIP_TONGA || sctx->family == CHIP_FIJI))) &&
+        si_get_streamout_enable_state(sctx)) {
+       radeon_begin(&sctx->gfx_cs);
