@@ -185,6 +185,7 @@ Kernel command-line options (in `bootargs.txt`):
 | `ps4_rescue` | Open a shell before anything else |
 | `ps4_disk_size=24G` | Size of a new disk on the PS4 without asking (`24`, `24G` or `24576M`), kept between the distro's minimum and the free space |
 | `quiet loglevel=1` | No kernel or system text on the screen while starting (in the default `bootargs.txt`; remove both to see the boot messages) |
+| `amdgpu.gttsize=5120 ttm.pages_limit=1310720` | Lets the GPU use up to 5 GB of system RAM besides its own 2 GB (in the default `bootargs.txt`). Large games such as Teardown in EmuFive need it; without it they stop with GPU out of memory. Nothing is reserved up front |
 
 ## Project layout
 
