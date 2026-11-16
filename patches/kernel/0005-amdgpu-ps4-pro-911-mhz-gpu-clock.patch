@@ -1,0 +1,125 @@
+From: Chokri Hammedi <52697989+blue0x1@users.noreply.github.com>
+Subject: [PATCH] amdgpu: PS4 Pro 911 MHz GPU clock the way the PS4 system sets it
+
+amdgpu.ps4_gpu_clk=3 runs the GPU clock start-up of Sony's FW 14.00 kernel
+on Gladius boards without a Baikal southbridge: GENERAL_PWRMGT bit 18, the
+911 MHz SPLL, SCLK dividers 0x10, then GCK_PLL_CONTROL bits 22 and 11 when
+the GPU is not in base mode. On a Belize PS4 Pro the SPLL is already at
+911 MHz and only bit 22 changes (0xd10 -> 0x400d10); the GPU already runs
+near 911 MHz there, so a shader ALU test gives the same rate. Default 0
+keeps the current behavior.
+---
+--- a/drivers/gpu/drm/amd/amdgpu/liverpool_clk.c
++++ b/drivers/gpu/drm/amd/amdgpu/liverpool_clk.c
+@@ -58,6 +58,14 @@
+ 
+ #define GLADIUS_GCK_SCLK_HI		0x400000
+ 
++/* Names from the log strings of Sony's FW 14.00 kernel (cail.c). */
++#define GCK_GENERAL_PWRMGT		0xc0200000
++#define GCK_PLL_CONTROL			CG_SCLK_CNTL_80
++#define   GCK_PLL_CONTROL_NEO		  (GLADIUS_GCK_SCLK_HI | BIT(11))
++#define GCK_SPLL_UPDATE			0xc05002ec
++#define GCK_SCLK_DID_DC			0xc05000dc
++#define GLADIUS_MODE_REG		0x203e
++
+ static void gladius_log_sclk_pair(struct amdgpu_device *adev, const char *when)
+ {
+ 	u32 r80 = RREG32_SMC(CG_SCLK_CNTL_80);
+@@ -116,6 +124,51 @@
+ 	dev_info(adev->dev, "Gladius SPLL 2e0 wait-set i=%d val=0x%08x\n", i, st);
+ }
+ 
++static u32 gladius_spll_fb(u32 mhz)
++{
++	return (mhz * 0x28f5c3u) >> 10;
++}
++
++/*
++ * The GPU clock start-up of Sony's FW 14.00 kernel (cail.c, run at GPU init and
++ * resume), done the same way: GENERAL_PWRMGT bit 18, the 911 MHz SPLL (skipped
++ * when it is already there, like Sony's own clock change), SCLK dividers 0x10
++ * under the SPLL update gate, then GCK_PLL_CONTROL bits 22 and 11 when the GPU
++ * is not in base mode (0x203e bit 0). Sony clears those bits in base mode; here
++ * base mode is left as it is. The voltage is left as the PS4 system set it, as
++ * Sony's start-up does.
++ */
++static void gladius_sclk_911(struct amdgpu_device *adev)
++{
++	u32 pwr = 0, fb = 0, pll = 0, mode;
++
++	liverpool_smu_samu_read(adev, GCK_GENERAL_PWRMGT, &pwr);
++	if (!(pwr & BIT(18)))
++		liverpool_smu_samu_write(adev, GCK_GENERAL_PWRMGT, pwr | BIT(18));
++
++	liverpool_smu_samu_read(adev, 0xc05002e4, &fb);
++	if (fb != gladius_spll_fb(911))
++		gladius_spll_911(adev);
++
++	liverpool_smu_samu_write(adev, GCK_SPLL_UPDATE, 0x101);
++	liverpool_smu_samu_write(adev, CG_SCLK_CNTL, 0x10);
++	liverpool_smu_samu_write(adev, GCK_SCLK_DID_DC, 0x10);
++	liverpool_smu_samu_write(adev, GCK_SPLL_UPDATE, 0);
++
++	mode = RREG32(GLADIUS_MODE_REG);
++	if (mode & 1) {
++		dev_warn(adev->dev,
++			 "PS4 GPU clock: base mode (0x203e 0x%08x), GCK_PLL_CONTROL left as it is\n",
++			 mode);
++		return;
++	}
++	liverpool_smu_samu_read(adev, GCK_PLL_CONTROL, &pll);
++	liverpool_smu_samu_write(adev, GCK_PLL_CONTROL, pll | GCK_PLL_CONTROL_NEO);
++	dev_info(adev->dev,
++		 "PS4 GPU clock: GENERAL_PWRMGT 0x%08x, GCK_PLL_CONTROL 0x%08x -> 0x%08x (0x203e 0x%08x)\n",
++		 pwr, pll, (u32)(pll | GCK_PLL_CONTROL_NEO), mode);
++}
++
+ static int gladius_gck_mailbox(struct amdgpu_device *adev)
+ {
+ 	static const u32 addrs[] = {
+@@ -327,12 +380,13 @@
+  * at about 391 MHz of the rated 911 MHz. Opt in from the kernel command line:
+  *   amdgpu.ps4_gpu_clk=1  log the clock, PLL and voltage registers (reads only)
+  *   amdgpu.ps4_gpu_clk=2  also program the SPLL for 911 MHz, then log again
++ *   amdgpu.ps4_gpu_clk=3  run Sony's GPU clock start-up for 911 MHz, then log again
+  * Both read and write only through the SAMU proxy, like Sony's own kernel.
+  */
+ static int ps4_gpu_clk;
+ module_param_named(ps4_gpu_clk, ps4_gpu_clk, int, 0444);
+ MODULE_PARM_DESC(ps4_gpu_clk,
+-		 "PS4 Pro GPU clock on non-Baikal boards: 0 off, 1 log registers, 2 set 911 MHz SPLL");
++		 "PS4 Pro GPU clock on non-Baikal boards: 0 off, 1 log registers, 2 set 911 MHz SPLL, 3 Sony's 911 MHz start-up");
+ 
+ static void gladius_clk_report(struct amdgpu_device *adev, const char *when)
+ {
+@@ -340,6 +394,7 @@
+ 		u32 reg;
+ 		const char *name;
+ 	} regs[] = {
++		{ GCK_GENERAL_PWRMGT, "GENERAL_PWRMGT" },
+ 		{ GCK_SCLK_FUSES, "SCLK_FUSES" },
+ 		{ GCK_SPLL_FUSES, "SPLL_FUSES" },
+ 		{ CG_SCLK_CNTL_80, "SCLK_CNTL_80" },
+@@ -351,6 +406,7 @@
+ 		{ CG_SPLL_STATUS, "SPLL_STATUS" },
+ 		{ 0xc05002e4, "SPLL_FB_2E4" },
+ 		{ 0xc05002e0, "SPLL_STAT_2E0" },
++		{ GCK_SCLK_DID_DC, "SCLK_DID_DC" },
+ 		{ VDDNB_STATUS, "VDDNB_STATUS" },
+ 	};
+ 	u32 i, val;
+@@ -378,6 +434,13 @@
+ 		gladius_clk_report(adev, "before");
+ 		if (ps4_gpu_clk < 2)
+ 			return 0;
++		if (ps4_gpu_clk >= 3) {
++			dev_warn(adev->dev,
++				 "PS4 GPU clock: Sony's 911 MHz start-up on a non-Baikal board (amdgpu.ps4_gpu_clk=3)\n");
++			gladius_sclk_911(adev);
++			gladius_clk_report(adev, "after");
++			return 0;
++		}
+ 		dev_warn(adev->dev,
+ 			 "PS4 GPU clock: programming the 911 MHz SPLL on a non-Baikal board (amdgpu.ps4_gpu_clk=2)\n");
+ 		gladius_spll_911(adev);
