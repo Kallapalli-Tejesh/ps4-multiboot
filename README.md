@@ -202,7 +202,6 @@ Kernel command-line options (in `bootargs.txt`):
 
 ## Credits
 
-PS4 Multiboot builds on the work of others:
 
 - [Strawberry](https://gitlab.com/rmuxnet/linux) by rmuxnet (branch `ps4/7.3.3`): the PS4 Linux kernel. Its release files are built from it with its own `build.sh` (`use=General lto=ThinLTO`), plus the extra drivers in `config/ps4.config`.
 - [Mesa](https://mesa3d.org/): the optional 3D graphics bundle, with the patches in `patches/mesa/`.
