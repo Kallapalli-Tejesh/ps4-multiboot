@@ -1,0 +1,33 @@
+From: Chokri Hammedi <52697989+blue0x1@users.noreply.github.com>
+Subject: [PATCH] amdgpu: ps4_bridge: check the DP link for fast 1080p modes
+
+ps4_bridge_mode_valid accepts every supported CEA mode up to 297 MHz and
+checks the DP link to the bridge only for 4K modes. A high-refresh monitor
+offers 1080p100/120 (VIC 64/63, 297 MHz); X picks it, link training fails
+("clock recovery failed") and the screen stays black (EmuFive issue #34,
+CUH 9923, LG UltraGear). Run the DP link check for every mode faster than
+1080p60 so modes the link cannot carry are not offered.
+
+---
+--- a/drivers/gpu/drm/amd/amdgpu/ps4_bridge.c
++++ b/drivers/gpu/drm/amd/amdgpu/ps4_bridge.c
+@@ -126,6 +126,7 @@
+ #define EDIDFIFO1 0x7c80
+ #define EDID_REPLY_SKIP 3
+ #define PS4_BRIDGE_MAX_CLOCK 297000
++#define PS4_BRIDGE_1080P60_CLOCK 148500
+ #define PS4_BRIDGE_4K_MAX_CLOCK 594000
+ #define PS4_BRIDGE_SCDC_CLOCK 340000
+ #define PS4_BRIDGE_ICC_SERVICE 0x10
+@@ -1438,6 +1439,11 @@ enum drm_mode_status ps4_bridge_mode_valid(struct drm_connector *connector,
+ 		return MODE_CLOCK_HIGH;
+ 	if (!ps4_bridge_vic_supported(vic))
+ 		return MODE_BAD;
++	/* 1080p100/120 need a faster DP link to the bridge than 1080p60; offer them only when
++	 * the link can carry them, or X picks them on high-refresh monitors and link training
++	 * fails (black screen). */
++	if (mode->clock > PS4_BRIDGE_1080P60_CLOCK)
++		return amdgpu_atombios_dp_mode_valid_helper(connector, mode);
+ 	return MODE_OK;
+ }
+ 

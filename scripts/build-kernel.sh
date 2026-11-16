@@ -44,6 +44,7 @@ docker run --rm \
     -e HOME=/tmp \
     -e KERNEL_PROFILE="$KERNEL_PROFILE" \
     -e KERNEL_LTO="$KERNEL_LTO" \
+    -e KERNEL_JOBS="${KERNEL_JOBS:-}" \
     -v "$BUILD:/build" \
     -v "$ROOT/config:/cfg:ro" \
     -w /build/ps4-linux \
@@ -58,7 +59,9 @@ docker run --rm \
             esac
         done < /cfg/ps4.config
 
-        ./build.sh --option 3 use="$KERNEL_PROFILE" lto="$KERNEL_LTO"
+        # pahole runs one thread per job and needs ~1 GB each; KERNEL_JOBS caps it on smaller hosts.
+        jobs="${KERNEL_JOBS:-$(nproc)}"
+        ./build.sh --option 3 use="$KERNEL_PROFILE" lto="$KERNEL_LTO" jobs="$jobs"
 
         # Our initramfs has no modules, so the boot path must be built in.
         fail=0
@@ -75,7 +78,7 @@ docker run --rm \
         # rebuilt in the same run so it matches the modules exactly.
         eval "$(grep -E "^export (KCFLAGS|KAFLAGS|HOSTCFLAGS)=" build.sh)"
         opts=(LLVM=1 ARCH=x86_64 HOSTCFLAGS="$HOSTCFLAGS")
-        make -j"$(nproc)" "${opts[@]}" bzImage modules
+        make -j"$jobs" "${opts[@]}" bzImage modules
         make "${opts[@]}" INSTALL_MOD_PATH=/build/modules INSTALL_MOD_STRIP=1 modules_install
         rm -f /build/modules/lib/modules/*/build
     '
