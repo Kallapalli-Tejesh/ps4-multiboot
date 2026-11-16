@@ -211,6 +211,12 @@ Kernel command-line options (in `bootargs.txt`):
 - [BusyBox](https://busybox.net/), [cryptsetup](https://gitlab.com/cryptsetup/cryptsetup), [e2fsprogs](https://e2fsprogs.sourceforge.net/), [util-linux](https://github.com/util-linux/util-linux) and [XZ Utils](https://tukaani.org/xz/): tools inside the boot image.
 - [stb](https://github.com/nothings/stb): the PNG and JPEG decoder for logos.
 
+## Support
+
+If PS4 Multiboot is useful to you, you can support its development with a Bitcoin donation:
+
+BTC: `bc1q7w5ns9vsguseppllpy609yhwrtq3v56g94mjde`
+
 ## License
 
 Copyright (C) 2026 [Chokri Hammedi (blue0x1)](https://github.com/blue0x1).
