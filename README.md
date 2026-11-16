@@ -123,6 +123,10 @@ The standard Mesa graphics driver in distros does not recognize the PS4 GPU, so 
 
 It needs glibc 2.38 or newer, which current distros have (Debian 13, Ubuntu 24.04, Kali, Parrot 7, Fedora 39, Arch and newer). The installer skips it on older distros, which keep software rendering. Tested on a PS4 Pro; the PS4 and PS4 Slim GPU use the same patches.
 
+### All 4 GPU engines on the PS4 Pro
+
+The PS4 system leaves half of the PS4 Pro's GPU (2 of its 4 shader engines) switched off unless a Pro-enhanced game runs, and Linux started from there keeps it that way. `linux-2048mb.bin` first asks the PS4 system to switch all 4 on, the same way it does for those games, then starts Linux. That is about twice the GPU compute. On firmware 14.00 it waits until the GPU has switched (up to 20 seconds, with a notification); on other firmware it waits 5 seconds. If the switch fails, Linux starts with 2 engines as before. Other PS4 models start Linux straight away.
+
 ## Logins
 
 If the archive has its own user, log in with it. If it has none, the installer creates one: user `<name>`, password `<name>` (for `debian-ps4-rootfs.tar.xz`: `debian` / `debian`), and gives root the same password. Change both right away with `passwd` and `sudo passwd root`.
@@ -165,6 +169,7 @@ You need a Linux PC with Docker, git, make and about 30 GB of free disk space.
 ```bash
 make kernel initramfs        # PS4 kernel and the boot menu with the installer
 make mesa                    # 3D graphics: out/ps4-mesa.tar.xz
+make payload LOADER=<file>    # out/linux-2048mb.bin from the original Linux loader
 make ps4-files               # copies the files for the PS4 into ps4-files/
 ```
 
@@ -190,6 +195,7 @@ Kernel command-line options (in `bootargs.txt`):
 | `initramfs/blockmap.c` | Maps the image files on the PS4 drive without writing the PS4's file system |
 | `initramfs/ps4hdmi.c` | Keeps the PS4 Slim/Pro HDMI output on |
 | `initramfs/stb_image.h` | PNG and JPEG decoder for logos ([stb](https://github.com/nothings/stb), public domain / MIT) |
+| `payload/` | `linux-2048mb.bin`: switches the PS4 Pro GPU to 4 engines, then runs the original Linux loader packed behind it |
 | `patches/mesa/`, `overlay-mesa/` | Mesa patches for the PS4 GPU, and the `ps4-mesa-*` helpers in the 3D graphics bundle |
 | `config/`, `docker/`, `scripts/`, `overlay/` | Build system, and settings for the optional `make rootfs` archives |
 | `assets/logos/`, `tools/` | Built-in logos, font and logo converters, HDMI bridge debugging tool |
@@ -201,6 +207,7 @@ PS4 Multiboot builds on the work of others:
 - [Strawberry](https://gitlab.com/rmuxnet/linux) by rmuxnet (branch `ps4/7.3.3`): the PS4 Linux kernel. Its release files are built from it with its own `build.sh` (`use=General lto=ThinLTO`), plus the extra drivers in `config/ps4.config`.
 - [Mesa](https://mesa3d.org/): the optional 3D graphics bundle, with the patches in `patches/mesa/`.
 - [GoldHEN](https://github.com/GoldHEN/GoldHEN): the jailbreak, FTP server and payload loader this project relies on.
+- [ps4-payload-sdk](https://github.com/Scene-Collective/ps4-payload-sdk) by Scene Collective: the payload SDK `payload/` is built with. The Linux loader inside `linux-2048mb.bin` is the community PS4 Linux payload, unchanged.
 - [BusyBox](https://busybox.net/), [cryptsetup](https://gitlab.com/cryptsetup/cryptsetup), [e2fsprogs](https://e2fsprogs.sourceforge.net/), [util-linux](https://github.com/util-linux/util-linux) and [XZ Utils](https://tukaani.org/xz/): tools inside the boot image.
 - [stb](https://github.com/nothings/stb): the PNG and JPEG decoder for logos.
 
