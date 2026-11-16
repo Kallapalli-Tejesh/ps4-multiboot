@@ -45,6 +45,7 @@ docker run --rm \
     -e KERNEL_PROFILE="$KERNEL_PROFILE" \
     -e KERNEL_LTO="$KERNEL_LTO" \
     -e KERNEL_JOBS="${KERNEL_JOBS:-}" \
+    -e MAKEFLAGS="${KERNEL_JOBS:+JOBS=$KERNEL_JOBS}" \
     -v "$BUILD:/build" \
     -v "$ROOT/config:/cfg:ro" \
     -w /build/ps4-linux \
