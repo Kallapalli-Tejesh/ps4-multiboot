@@ -8,6 +8,7 @@
   <img src="https://img.shields.io/badge/platform-PS4-003791?logo=playstation&logoColor=white" alt="Platform: PS4">
   <img src="https://img.shields.io/badge/distro-any-2ea043?logo=linux&logoColor=white" alt="Distro: any">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--2.0-blue" alt="License: GPL-2.0"></a>
+  <a href="https://github.com/blue0x1/ps4-multiboot/releases"><img src="https://img.shields.io/github/downloads/blue0x1/ps4-multiboot/total?label=downloads" alt="Downloads"></a>
 </p>
 
 One menu to install and boot Linux on a jailbroken PlayStation 4, all from the controller. Use any distro you like: copy its rootfs archive to the PS4 and it appears in the menu, ready to install. The installer adds everything the PS4 needs by itself. No PC tools, partitioning or USB stick are needed.
