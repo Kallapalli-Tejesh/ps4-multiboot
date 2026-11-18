@@ -26,10 +26,11 @@ mesa:
 	scripts/build-mesa.sh
 
 # The Linux payload (PS4 Pro: all 4 GPU engines first): out/linux-2048mb.bin.
-# LOADER is the original linux-2048mb.bin, which is packed inside it.
+# LOADER is the original linux-2048mb.bin, which is packed inside it. With LOADER_1402
+# (WebKitty's 14.02 linux-2048mb.bin) also out/linux-2048mb-14.02.bin for firmware 14.02.
 payload:
-	@test -n "$(LOADER)" || { echo "Usage: make payload LOADER=<original linux-2048mb.bin>"; exit 1; }
-	scripts/build-payload.sh "$(LOADER)"
+	@test -n "$(LOADER)" || { echo "Usage: make payload LOADER=<original linux-2048mb.bin> [LOADER_1402=<WebKitty 14.02 linux-2048mb.bin>]"; exit 1; }
+	scripts/build-payload.sh "$(LOADER)" $(if $(LOADER_1402),"$(LOADER_1402)")
 
 # Copies a finished build into ps4-files/, laid out like the PS4's folders
 # (for the GitHub Release; not committed).
@@ -40,6 +41,7 @@ ps4-files:
 	[ ! -f out/ps4-mesa.tar.xz ] || cp out/ps4-mesa.tar.xz ps4-files/user/home/
 	cp out/kernel.info ps4-files/
 	[ ! -f out/linux-2048mb.bin ] || { mkdir -p ps4-files/data/payloads && cp out/linux-2048mb.bin ps4-files/data/payloads/; }
+	[ ! -f out/linux-2048mb-14.02.bin ] || { mkdir -p ps4-files/data/payloads && cp out/linux-2048mb-14.02.bin ps4-files/data/payloads/; }
 
 usb:
 	@test -n "$(DEVICE)" || { echo "Usage: make usb DEVICE=/dev/sdX"; exit 1; }

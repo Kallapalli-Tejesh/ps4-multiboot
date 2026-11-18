@@ -30,7 +30,7 @@ Created by **[Chokri Hammedi (blue0x1)](https://github.com/blue0x1)**. Based on 
 
 ## Requirements
 
-- A jailbroken PS4 with **GoldHEN** (for its FTP server and payload loader).
+- A jailbroken PS4 with **GoldHEN** (for its FTP server and payload loader), on firmware 14.00 or 14.02.
 - A PC on the same network with an FTP client (for example FileZilla).
 - Free space on the PS4 for each distro installed on it: its disk (you choose the size when installing, from about 6 GB for EmuFive; 16 GB is suggested) plus 10 GB always left free for the PS4. Or a USB drive of 8 GB or more per distro.
 - Optional: a DualShock 4 with a USB cable, or a USB keyboard.
@@ -39,7 +39,7 @@ Consoles: tested on the PS4 Pro (Belize southbridge). Later Slims and Pros with 
 
 ## Install
 
-1. Download from the Releases page: `bzImage`, `initramfs.cpio.gz`, `bootargs.txt` and `linux-2048mb.bin`, and `ps4-mesa.tar.xz` for 3D graphics (optional, recommended).
+1. Download from the Releases page: `bzImage`, `initramfs.cpio.gz`, `bootargs.txt` and `linux-2048mb.bin` (on firmware 14.02: `linux-2048mb-14.02.bin` instead), and `ps4-mesa.tar.xz` for 3D graphics (optional, recommended).
 
 2. Get the rootfs archive of each distro you want and name it `<name>-ps4-rootfs.tar.xz` (or `.tar.gz`, `.tar.bz2`, keeping its own extension), for example `debian-ps4-rootfs.tar.xz` (see [Choosing a distro](#choosing-a-distro)).
 
@@ -50,9 +50,9 @@ Consoles: tested on the PS4 Pro (Belize southbridge). Later Slims and Pros with 
    | `bzImage`, `initramfs.cpio.gz`, `bootargs.txt` | `/data/linux/boot/` |
    | `<name>-ps4-rootfs.tar.xz` / `.tar.gz` / `.tar.bz2` (one per distro) | `/user/home/` |
    | `ps4-mesa.tar.xz` (optional, 3D graphics) | `/user/home/` |
-   | `linux-2048mb.bin` | `/data/payloads/` |
+   | `linux-2048mb.bin` (14.02: `linux-2048mb-14.02.bin`) | `/data/payloads/` |
 
-4. Run `linux-2048mb.bin` from GoldHEN's payload menu.
+4. Run `linux-2048mb.bin` (on 14.02: `linux-2048mb-14.02.bin`) from GoldHEN's payload menu. On 14.02 the first run can turn the PS4 off; run it again.
 
    > **Be patient:** after the payload starts, the TV can show **"No signal" or a black screen for 1 to 2 minutes** while Linux starts. This is normal.
 
@@ -170,7 +170,7 @@ You need a Linux PC with Docker, git, make and about 30 GB of free disk space.
 ```bash
 make kernel initramfs        # PS4 kernel and the boot menu with the installer
 make mesa                    # 3D graphics: out/ps4-mesa.tar.xz
-make payload LOADER=<file>    # out/linux-2048mb.bin from the original Linux loader
+make payload LOADER=<file> [LOADER_1402=<file>]   # out/linux-2048mb.bin from the original Linux loader; with WebKitty's 14.02 loader also out/linux-2048mb-14.02.bin
 make ps4-files               # copies the files for the PS4 into ps4-files/
 ```
 
@@ -209,6 +209,7 @@ Kernel command-line options (in `bootargs.txt`):
 - [Mesa](https://mesa3d.org/): the optional 3D graphics bundle, with the patches in `patches/mesa/`.
 - [GoldHEN](https://github.com/GoldHEN/GoldHEN): the jailbreak, FTP server and payload loader this project relies on.
 - [ps4-payload-sdk](https://github.com/Scene-Collective/ps4-payload-sdk) by Scene Collective: the payload SDK `payload/` is built with. The Linux loader inside `linux-2048mb.bin` is the community PS4 Linux payload, unchanged.
+- [WebKitty](https://github.com/ArabPixel/WebKitty) by ArabPixel: the firmware 14.02 Linux loader inside `linux-2048mb-14.02.bin`, unchanged.
 - [BusyBox](https://busybox.net/), [cryptsetup](https://gitlab.com/cryptsetup/cryptsetup), [e2fsprogs](https://e2fsprogs.sourceforge.net/), [util-linux](https://github.com/util-linux/util-linux) and [XZ Utils](https://tukaani.org/xz/): tools inside the boot image.
 - [stb](https://github.com/nothings/stb): the PNG and JPEG decoder for logos.
 
