@@ -30,7 +30,7 @@ Created by **[Chokri Hammedi (blue0x1)](https://github.com/blue0x1)**. Based on 
 
 ## Requirements
 
-- A jailbroken PS4 with **GoldHEN** (for its FTP server and payload loader), on firmware 14.00 or 14.02.
+- A jailbroken PS4 with **GoldHEN** (for its FTP server and payload loader), on firmware 5.05 to 14.02. The Linux loader inside the payload finds the firmware and the southbridge by itself. Tested on 12.50, 14.00 and 14.02.
 - A PC on the same network with an FTP client (for example FileZilla).
 - Free space on the PS4 for each distro installed on it: its disk (you choose the size when installing, from about 6 GB for EmuFive; 16 GB is suggested) plus 10 GB always left free for the PS4. Or a USB drive of 8 GB or more per distro.
 - Optional: a DualShock 4 with a USB cable, or a USB keyboard.
