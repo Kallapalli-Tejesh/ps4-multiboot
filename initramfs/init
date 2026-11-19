@@ -318,6 +318,8 @@ ui_answer=""
 ui_back_label="Restart the PS4"
 ui_error() {
     msg "$1"
+    # Saved before the screen, so "Restart the PS4" still leaves the details.
+    save_log "$1" error
     [ -x /bin/fbui ] || return 0
     if fbui fail "${UI_IMG:--}" "$1" "$ui_back_label"; then
         ui_answer=back
