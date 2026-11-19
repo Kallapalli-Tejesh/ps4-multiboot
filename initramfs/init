@@ -50,8 +50,14 @@ msg() { echo "ps4-linux: $*"; echo "ps4-linux: $*" > /dev/kmsg 2>/dev/null; }
 
 # Writes the kernel log to the FAT32 boot partition (LABEL=PS4BOOT) so a boot
 # with no display or network can still be diagnosed on another computer.
+# USB drives show up a few seconds into the boot, so early in the boot (the
+# rescue shell from ps4_rescue runs at about 1 s) wait until 15 s of uptime
+# for the stick before giving up.
 save_log() {
-    bd="$(findfs LABEL=PS4BOOT 2>/dev/null)" || return 0
+    until bd="$(findfs LABEL=PS4BOOT 2>/dev/null)"; do
+        [ "$(cut -d. -f1 /proc/uptime)" -lt 15 ] || return 0
+        sleep 1
+    done
     mkdir -p /bootfs
     mount -t vfat "$bd" /bootfs 2>/dev/null || return 0
     {
