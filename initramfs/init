@@ -644,8 +644,15 @@ disk_size_arg_mb() {
     esac
 }
 
+# The disk is written as <name>-ps4.img.part and renamed when it is complete,
+# so a PS4 turned off while it is written never leaves an image that looks
+# installed (it would have holes and could not be mapped). A leftover .part
+# from such a boot is removed, and its space counts as free.
 create_image() {
-    free_mb=$(df -m /ps4hdd | awk 'NR==2{print $4}')
+    part="/ps4hdd/$HDD_IMG.part"
+    part_mb=0
+    [ -f "$part" ] && part_mb=$(( $(stat -c %s "$part") / 1048576 ))
+    free_mb=$(( $(df -m /ps4hdd | awk 'NR==2{print $4}') + part_mb ))
     min_mb=$(min_image_mb)
     max_mb=$(( ${free_mb:-0} - HDD_KEEP_FREE_MB ))
     max_mb=$(( max_mb / 1024 * 1024 ))
@@ -678,10 +685,15 @@ create_image() {
         ui_error "Installation failed: could not open the PS4 drive for writing"
         return 1
     fi
+    if [ -f "$part" ]; then
+        msg "removing /user/$HDD_IMG.part left by an install that was stopped"
+        rm -f "$part"
+    fi
     msg "creating /user/$HDD_IMG ($((size_mb / 1024)) GB, a few minutes, do not turn off)"
     bytes=$((size_mb * 1048576))
     if head -c "$bytes" /dev/zero | ui_progress 0 25 "$bytes" "Creating the $DNAME disk on your PS4" \
-           > "/ps4hdd/$HDD_IMG" && sync && [ "$(stat -c %s "/ps4hdd/$HDD_IMG")" = "$bytes" ]; then
+           > "$part" && sync && [ "$(stat -c %s "$part")" = "$bytes" ] \
+           && mv "$part" "/ps4hdd/$HDD_IMG" && sync; then
         mount -o remount,ro /ps4hdd
         img_created=1
         msg "image created"
@@ -689,7 +701,7 @@ create_image() {
     fi
     ui_error "Installation failed: could not create the $DNAME disk"
     msg "removing the partial file"
-    rm -f "/ps4hdd/$HDD_IMG"
+    rm -f "$part"
     sync
     mount -o remount,ro /ps4hdd
     return 1
@@ -762,9 +774,13 @@ hdd_boot() {
         create_image || { hdd_close; return 1; }
     fi
     mkdir -p /run
-    if ! blockmap "/ps4hdd/$HDD_IMG" /dev/mapper/ps4hdd > /run/dist-img.table; then
-        msg "hdd: could not map /user/$HDD_IMG (holes or unsupported)"
+    if ! blockmap "/ps4hdd/$HDD_IMG" /dev/mapper/ps4hdd > /run/dist-img.table 2> /run/blockmap.err; then
+        msg "hdd: could not map /user/$HDD_IMG (holes or unsupported): $(cat /run/blockmap.err)"
         hdd_close
+        # Holes: the disk was being written when the PS4 was turned off.
+        if grep -q "is a hole" /run/blockmap.err; then
+            ui_error "The $DNAME disk is incomplete (an install was stopped). Delete /user/$HDD_IMG over FTP and start again."
+        fi
         return 1
     fi
     msg "hdd: image mapped in $(wc -l < /run/dist-img.table) extents"
