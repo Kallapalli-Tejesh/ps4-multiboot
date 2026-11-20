@@ -85,7 +85,11 @@ docker run --rm \
         install -m 755 /src/init "$stage/init"
         mknod -m 600 "$stage/dev/console" c 5 1
         mknod -m 666 "$stage/dev/null" c 1 3
-        (cd "$stage" && find . | cpio --quiet -o -H newc -R 0:0) | gzip -9 > /out/initramfs.cpio.gz
+        # etc/ps4/complete goes last: init only finds it when the whole file
+        # was unpacked (a copy cut short leaves out the end).
+        : > "$stage/etc/ps4/complete"
+        (cd "$stage" && { find . ! -path ./etc/ps4/complete; echo ./etc/ps4/complete; } \
+            | cpio --quiet -o -H newc -R 0:0) | gzip -9 > /out/initramfs.cpio.gz
         chown "$HOST_UID:$HOST_GID" /out/initramfs.cpio.gz
     '
 

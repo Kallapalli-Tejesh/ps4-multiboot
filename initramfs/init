@@ -914,6 +914,17 @@ show_banner
 msg "initramfs starting"
 [ "$rescue" = 1 ] && rescue_shell "rescue shell requested"
 
+# An initramfs.cpio.gz copied only in part (a transfer cut short, or FTP in
+# text mode) still starts: the kernel unpacks what it can ("rootfs image is
+# not initramfs (read error)"), but the tools packed after that point are
+# missing or broken, and cryptsetup or mke2fs crash later (ps4-multiboot#12).
+# build-initramfs.sh packs this file last, so it is only here when the whole
+# file was read.
+if [ ! -f /etc/ps4/complete ]; then
+    ui_error "initramfs.cpio.gz is damaged or incomplete. Copy it to /data/linux/boot/ again (binary mode, from the same release as bzImage)."
+    back_or_shell "initramfs.cpio.gz is damaged or incomplete"
+fi
+
 # A root given on the command line boots directly, as in Kali for PS4.
 if [ -n "$root_spec" ]; then
     i=0; dev=""
