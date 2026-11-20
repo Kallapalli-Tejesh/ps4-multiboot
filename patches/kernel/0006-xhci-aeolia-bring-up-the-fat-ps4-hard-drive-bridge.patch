@@ -1,0 +1,56 @@
+From: Chokri Hammedi <52697989+blue0x1@users.noreply.github.com>
+Subject: [PATCH] xhci-aeolia: bring up the fat PS4's internal hard drive again
+
+On the fat PS4 (Aeolia) the internal hard drive is a USB-SATA bridge on the
+middle xHCI host controller. With this kernel it never answers ("usb 4-1:
+device descriptor read/8, error -110"), so Linux sees no internal drive
+(ps4-multiboot issue #3, EmuFive issue #38). The 7.0 kernel found it.
+
+Do what the 7.0 driver did on Aeolia: pause before each host controller
+comes up (7.0 had the pause from console printk calls), no interrupt
+moderation, and no USB streams, so the bridge uses usb-storage as before.
+Belize and Baikal are unchanged.
+
+diff --git a/drivers/usb/host/xhci-aeolia.c b/drivers/usb/host/xhci-aeolia.c
+index d3a5834c6..51ee5a938 100644
+--- a/drivers/usb/host/xhci-aeolia.c
++++ b/drivers/usb/host/xhci-aeolia.c
+@@ -50,6 +50,10 @@ static void xhci_aeolia_quirks(struct device *dev, struct xhci_hcd *xhci)
+ 		xhci->quirks |= XHCI_PLAT;
+ 		xhci->imod_interval = 0;
+ 	}
++
++	/* Aeolia (fat PS4): no interrupt moderation, as in the 7.0 kernel. */
++	if (to_pci_dev(dev)->device == PCI_DEVICE_ID_SONY_AEOLIA_XHCI)
++		xhci->imod_interval = 0;
+ }
+ 
+ /* called during probe() after chip reset completes */
+@@ -99,7 +103,16 @@ static int xhci_aeolia_probe_one(struct pci_dev *dev, int index)
+ 			 index, dev->device, irq);
+ 	else
+ 		dev_dbg(&dev->dev, "xhci_aeolia_probe_one %d\n", index);
+-	usleep_range(200, 500);
++	/*
++	 * Aeolia's middle host controller carries the internal hard drive (a
++	 * USB-SATA bridge). It only came up after a pause: the 7.0 kernel had one
++	 * from its console printk calls here and in the MSI setup, and without it
++	 * the bridge never answers (device descriptor read, error -110).
++	 */
++	if (xhci_aeolia_has_middle_host(dev))
++		msleep(50);
++	else
++		usleep_range(200, 500);
+ 
+ 	hcd = usb_create_hcd(driver, &dev->dev, pci_name(dev));
+ 	pci_set_drvdata(dev, axhci); /* usb_create_hcd clobbers this */
+@@ -137,7 +150,8 @@ static int xhci_aeolia_probe_one(struct pci_dev *dev, int index)
+ 	if (retval)
+ 		goto put_usb3_hcd;
+ 
+-	if (!xhci_aeolia_is_baikal(dev)) {
++	/* Not on Aeolia: its hard drive bridge ran with usb-storage, not UAS streams. */
++	if (dev->device == PCI_DEVICE_ID_SONY_BELIZE_XHCI) {
+ 		struct usb_hcd *usb3_hcd = xhci_get_usb3_hcd(xhci);
+ 
+ 		if (usb3_hcd && GET_MAX_PSA_SIZE(xhci->hcc_params) >= 4 &&
