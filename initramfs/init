@@ -66,6 +66,10 @@ save_log() {
         echo "cmdline: $(cat /proc/cmdline)"
         uname -a
         echo "== /sys/class/drm"; ls /sys/class/drm 2>&1
+        echo "== /proc/interrupts"; cat /proc/interrupts 2>&1
+        echo "== lsusb"; for d in /sys/bus/usb/devices/*; do
+            [ -f "$d/idVendor" ] && echo "${d##*/} $(cat "$d/idVendor"):$(cat "$d/idProduct") $(cat "$d/product" 2>/dev/null)"
+        done
         echo "== dmesg"; dmesg
     } > "/bootfs/ps4-linux-$2.log" 2>&1
     sync
