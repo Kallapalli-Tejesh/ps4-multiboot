@@ -35,7 +35,7 @@ Created by **[Chokri Hammedi (blue0x1)](https://github.com/blue0x1)**. Based on 
 - Free space on the PS4 for each distro installed on it: its disk (you choose the size when installing, from about 6 GB for EmuFive; 16 GB is suggested) plus 10 GB always left free for the PS4. Or a USB drive of 8 GB or more per distro.
 - Optional: a DualShock 4 with a USB cable, or a USB keyboard.
 
-Consoles: tested on the PS4 Pro (Belize southbridge). Later Slims and Pros with the Baikal southbridge (many CUH-21xx/22xx and CUH-71xx/72xx) are experimental: Linux starts and the display works, but USB drives may not be writable yet. The original PS4 (CUH-10xx/11xx, Aeolia) is not tested yet.
+Consoles: tested on the PS4 Pro (Belize southbridge). Later Slims and Pros with the Baikal southbridge (many CUH-21xx/22xx and CUH-71xx/72xx) are experimental: Linux starts and the display works, but USB drives may not be writable yet. The original PS4 (CUH-10xx/11xx, Aeolia) works since beta 8 (tested on a CUH-1004A on 14.02, and on a fat PS4 with the internal drive).
 
 ## Install
 
@@ -51,6 +51,8 @@ Consoles: tested on the PS4 Pro (Belize southbridge). Later Slims and Pros with 
    | `<name>-ps4-rootfs.tar.xz` / `.tar.gz` / `.tar.bz2` (one per distro) | `/user/home/` |
    | `ps4-mesa.tar.xz` (optional, 3D graphics) | `/user/home/` |
    | `linux-2048mb.bin` (14.02: `linux-2048mb-14.02.bin`) | `/data/payloads/` |
+
+   In FileZilla, set **Transfer → Transfer type → Binary** first. In ASCII or Auto mode some bytes of `bzImage` and the other files get changed, and Linux does not start (ps4-multiboot#18).
 
 4. Run `linux-2048mb.bin` (on 14.02: `linux-2048mb-14.02.bin`) from GoldHEN's payload menu. On 14.02 the first run can turn the PS4 off; run it again.
 
